@@ -185,6 +185,7 @@
       overflow-x: auto;
       max-height: 300px;
       overflow-y: auto;
+      white-space: pre-wrap;
     }
 
     .preview-title {
@@ -410,6 +411,8 @@
 
     .files-section {
       padding: 30px;
+      flex: 1;
+      overflow-y: auto;
     }
 
     .section-title {
@@ -566,16 +569,6 @@
         opacity: 1;
         transform: translateY(0);
       }
-    }
-
-    .pulse {
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-      100% { transform: scale(1); }
     }
 
     .notification {
@@ -784,12 +777,41 @@
       
       // Auto-detect file extension
       pasteTextarea.addEventListener('input', autoDetectFileType);
+      
+      // Add search functionality
+      searchInput.addEventListener('input', handleSearch);
+    });
+
+    // Drag and drop functionality
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+
+    uploadArea.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      handleFiles(droppedFiles);
+    });
+
+    uploadArea.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const selectedFiles = Array.from(e.target.files);
+      handleFiles(selectedFiles);
     });
 
     // Storage functions
     function saveFilesToStorage() {
       try {
-        // Convert file data to JSON-serializable format
         const serializable = {};
         for (const [id, file] of Object.entries(files)) {
           serializable[id] = {
@@ -799,11 +821,10 @@
             size: file.size,
             date: file.date,
             content: file.content,
-            dataUrl: file.dataUrl // Store as data URL for non-text files
+            dataUrl: file.dataUrl
           };
         }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
-        showNotification('Files saved successfully!');
       } catch (error) {
         showNotification('Error saving files: Storage limit exceeded', 'error');
       }
@@ -822,7 +843,9 @@
           }
           
           updateStats();
-          showNotification('Files loaded successfully!');
+          if (Object.keys(files).length > 0) {
+            showNotification(`Loaded ${Object.keys(files).length} files successfully!`);
+          }
         }
       } catch (error) {
         showNotification('Error loading files', 'error');
@@ -840,57 +863,50 @@
       }
     }
 
-    // Notification system
-    function showNotification(message, type = 'success') {
-      const notification = document.getElementById('notification');
-      notification.textContent = message;
-      notification.className = `notification ${type}`;
-      notification.classList.add('show');
+    // File handling functions
+    function handleFiles(newFiles) {
+      newFiles.forEach(file => {
+        const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        const fileInfo = getFileType(file.name);
+        
+        const fileData = {
+          id: fileId,
+          name: file.name,
+          type: fileInfo.type,
+          icon: fileInfo.icon,
+          size: formatFileSize(file.size),
+          date: new Date().toISOString().split('T')[0],
+          content: null,
+          dataUrl: null
+        };
+
+        // Handle text files
+        if (isTextFile(file)) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            fileData.content = e.target.result;
+            files[fileId] = fileData;
+            addFileToGrid(fileData);
+            saveFilesToStorage();
+            updateStats();
+          };
+          reader.readAsText(file);
+        } else {
+          // Handle binary files
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            fileData.dataUrl = e.target.result;
+            files[fileId] = fileData;
+            addFileToGrid(fileData);
+            saveFilesToStorage();
+            updateStats();
+          };
+          reader.readAsDataURL(file);
+        }
+      });
       
-      setTimeout(() => {
-        notification.classList.remove('show');
-      }, 3000);
+      showNotification(`Processing ${newFiles.length} file(s)...`);
     }
 
-    // Paste functionality
-    function updatePasteSaveButton() {
-      const hasText = pasteTextarea.value.trim().length > 0;
-      const hasFilename = pasteFilename.value.trim().length > 0;
-      pasteSaveBtn.disabled = !hasText || !hasFilename;
-    }
-
-    function autoDetectFileType() {
-      const content = pasteTextarea.value;
-      let suggestedName = '';
-      
-      if (content.includes('def ') && content.includes('import ')) {
-        suggestedName = 'script.py';
-      } else if (content.includes('function ') || content.includes('const ') || content.includes('let ')) {
-        suggestedName = 'script.js';
-      } else if (content.includes('<!DOCTYPE') || content.includes('<html>')) {
-        suggestedName = 'page.html';
-      } else if (content.includes('body {') || content.includes('.class')) {
-        suggestedName = 'styles.css';
-      } else {
-        suggestedName = 'document.txt';
-      }
-      
-      if (!pasteFilename.value) {
-        pasteFilename.value = suggestedName;
-        updatePasteSaveButton();
-      }
-    }
-
-    function saveTextAsFile() {
-      const content = pasteTextarea.value.trim();
-      const filename = pasteFilename.value.trim();
-      
-      if (!content || !filename) {
-        showNotification('Please enter both content and filename', 'error');
-        return;
-      }
-      
-      // Create file data
-      const fileData = {
-        id: Date.now().toString(),
-        name: filename,
+    function isTextFile(file) {
+      const textExtensions = ['.txt', '.py', '.js', '.
