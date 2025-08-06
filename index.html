@@ -1,0 +1,1076 @@
+<script>
+    // File upload functionality
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const fileGrid = document.getElementById('fileGrid');
+    const searchInput = document.getElementById('searchInput');
+    const sidebar = document.getElementById('sidebar');
+    
+    let files = [];
+    let currentFile = null;
+
+    // Drag and drop functionality
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+
+    uploadArea.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      handleFiles(droppedFiles);
+    });
+
+    uploadArea.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const selectedFiles = Array.from(e.target.files);
+      handleFiles(selectedFiles);
+    });
+
+    // Handle file uploads
+    function handleFiles(newFiles) {
+      newFiles.forEach(file => {
+        const fileData = {
+          name: file.name,
+          type: getFileType(file.name),
+          size: formatFileSize(file.size),
+          date: new Date().toISOString().split('T')[0],
+          content: null,
+          url: URL.createObjectURL(file),
+          file: file
+        };
+
+        // Read text files for preview
+        if (file.type.startsWith('text/') || file.name.endsWith('.py') || file.name.endsWith('.js') || file.name.endsWith('.css') || file.name.endsWith('.html') || file.name.endsWith('.md') || file.name.endsWith('.json')) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            fileData.content = e.target.result;
+            files.push(fileData);
+            addFileToGrid(fileData);
+            updateStats();
+          };
+          reader.readAsText(file);
+        } else {
+          files.push(fileData);
+          addFileToGrid(fileData);
+          updateStats();
+        }
+      });
+    }
+
+    // Get file type and icon
+    function getFileType(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      const types = {
+        'pdf': { type: 'PDF Document', icon: '📄' },
+        'txt': { type: 'Text Document', icon: '📝' },
+        'py': { type: 'Python Script', icon: '🐍' },
+        'js': { type: 'JavaScript File', icon: '🟨' },
+        'html': { type: 'HTML Document', icon: '🌐' },
+        'css': { type: 'CSS Stylesheet', icon: '🎨' },
+        'json': { type: 'JSON Data', icon: '📊' },
+        'md': { type: 'Markdown File', icon: '📋' },
+        'xml': { type: 'XML Document', icon: '📄' }
+      };
+      return types[ext] || { type: 'File', icon: '📁' };
+    }
+
+    // Format file size
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Add file to grid
+    function addFileToGrid(fileData) {
+      const fileInfo = getFileType(fileData.name);
+      const fileItem = document.createElement('div');
+      fileItem.className = 'file-item fade-in';
+      fileItem.setAttribute('data-filename', fileData.name);
+      fileItem.setAttribute('data-type', fileInfo.type.toLowerCase());
+      fileItem.setAttribute('data-size', fileData.size);
+      fileItem.setAttribute('data-date', fileData.date);
+
+      let previewHtml = '';
+      if (fileData.content) {
+        const language = getLanguageFromExtension(fileData.name);
+        const truncatedContent = fileData.content.substring(0, 200) + (fileData.content.length > 200 ? '...' : '');
+        previewHtml = `
+          <div class="file-preview">
+            <pre><code class="language-${language}">${escapeHtml(truncatedContent)}</code></pre>
+          </div>
+        `;
+      }
+
+      const cleanName = fileData.name.replace(/\.[^/.]+$/, "");
+      const uniqueId = Date.now() + Math.random();
+      
+      fileItem.innerHTML = `
+        <span class="file-icon">${fileInfo.icon}</span>
+        <div class="file-name">${cleanName}</div>
+        <div class="file-type">${fileInfo.type}</div>
+        ${previewHtml}
+        <div class="file-actions">
+          <button class="action-btn primary" onclick="openSidebarForUploadedFile('${fileData.name}', '${fileInfo.type}', '${fileInfo.icon}', '${fileData.size}', '${fileData.date}', '${fileData.url}', '${getLanguageFromExtension(fileData.name)}', ${uniqueId})">View</button>
+          <a href="${fileData.url}" download="${fileData.name}" class="action-btn">Download</a>
+          <button class="action-btn danger" onclick="deleteFile(this, '${fileData.name}')">Delete</button>
+        </div>
+      `;
+
+      // Store the file data on the element
+      fileItem.fileData = fileData;
+      fileItem.uniqueId = uniqueId;
+
+      fileGrid.appendChild(fileItem);
+
+      // Highlight syntax if preview exists
+      if (fileData.content) {
+        setTimeout(() => {
+          Prism.highlightAllUnder(fileItem);
+        }, 100);
+      }
+    }
+
+    // Sidebar functions
+    function openSidebar(filename, type, icon, size, date, url, language = null) {
+      currentFile = { filename, type, icon, size, date, url, language };
+      
+      document.getElementById('sidebarFileName').textContent = filename;
+      document.getElementById('sidebarFileType').textContent = type;
+      document.getElementById('sidebarFileSize').textContent = size;
+      document.getElementById('sidebarFileDate').textContent = date;
+      document.getElementById('sidebarViewBtn').href = url;
+      document.getElementById('sidebarDownloadBtn').href = url;
+      document.getElementById('sidebarDownloadBtn').download = filename;
+
+      // Load preview content
+      if (language && (language === 'python' || language === 'javascript' || language === 'text')) {
+        loadFilePreview(url, language);
+      } else {
+        document.getElementById('sidebarPreviewContent').innerHTML = 'Preview not available for this file type.';
+      }
+
+      sidebar.classList.add('active');
+    }
+
+    function openSidebarForUploadedFile(filename, type, icon, size, date, url, language, uniqueId) {
+      // Find the file data
+      const fileElements = document.querySelectorAll('.file-item');
+      let fileData = null;
+      
+      for (let element of fileElements) {
+        if (element.uniqueId === uniqueId) {
+          fileData = element.fileData;
+          break;
+        }
+      }
+
+      currentFile = { filename, type, icon, size, date, url, language, fileData };
+      
+      document.getElementById('sidebarFileName').textContent = filename;
+      document.getElementById('sidebarFileType').textContent = type;
+      document.getElementById('sidebarFileSize').textContent = size;
+      document.getElementById('sidebarFileDate').textContent = date;
+      document.getElementById('sidebarViewBtn').href = url;
+      document.getElementById('sidebarDownloadBtn').href = url;
+      document.getElementById('sidebarDownloadBtn').download = filename;
+
+      // Show content if available
+      if (fileData && fileData.content) {
+        const previewContent = document.getElementById('sidebarPreviewContent');
+        previewContent.innerHTML = `<pre><code class="language-${language}">${escapeHtml(fileData.content)}</code></pre>`;
+        setTimeout(() => {
+          Prism.highlightAllUnder(previewContent);
+        }, 100);
+      } else {
+        document.getElementById('sidebarPreviewContent').innerHTML = 'Preview not available for this file type.';
+      }
+
+      sidebar.classList.add('active');
+    }
+
+    function closeSidebar() {
+      sidebar.classList.remove('active');
+      currentFile = null;
+    }
+
+    function loadFilePreview(url, language) {
+      // For demo purposes, show sample content
+      const sampleContent = {
+        python: `# Sample Python code
+def hello_world():
+    print("Hello, World!")
+    return True
+
+if __name__ == "__main__":
+    hello_world()
+    
+# More complex example
+class Calculator:
+    def __init__(self):
+        self.result = 0
+    
+    def add(self, x, y):
+        self.result = x + y
+        return self.result`,
+        text: `This is a summary document containing important notes an<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeVault - My Notes & Code</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-html.min.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #fff;
+      line-height: 1.6;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(20px);
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      display: flex;
+      min-height: 90vh;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 400px;
+      background: rgba(0, 0, 0, 0.2);
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      display: none;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .sidebar.active {
+      display: flex;
+    }
+
+    .sidebar-header {
+      padding: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .sidebar-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+
+    .close-sidebar {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 5px;
+      border-radius: 8px;
+      transition: background 0.3s ease;
+    }
+
+    .close-sidebar:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .sidebar-content {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .file-details {
+      margin-bottom: 24px;
+    }
+
+    .file-details h3 {
+      font-size: 1.4rem;
+      margin-bottom: 16px;
+      color: #fff;
+      word-break: break-word;
+    }
+
+    .detail-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.9rem;
+    }
+
+    .detail-label {
+      opacity: 0.7;
+      font-weight: 500;
+    }
+
+    .detail-value {
+      font-weight: 600;
+      text-align: right;
+    }
+
+    .sidebar-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .sidebar-btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .sidebar-btn.primary {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      color: white;
+      box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+    }
+
+    .sidebar-btn.secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .sidebar-btn.danger {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+      box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+    }
+
+    .sidebar-btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .sidebar-btn.primary:hover {
+      box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
+    }
+
+    .sidebar-btn.danger:hover {
+      box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+    }
+
+    .file-preview-full {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 20px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .preview-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+
+    header {
+      text-align: center;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #fff 0%, #e0e7ff 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .subtitle {
+      font-size: 1.2rem;
+      opacity: 0.9;
+      font-weight: 400;
+      margin-bottom: 30px;
+    }
+
+    .upload-section {
+      padding: 30px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .upload-area {
+      border: 2px dashed rgba(255, 255, 255, 0.3);
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      position: relative;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .upload-area:hover {
+      border-color: rgba(255, 255, 255, 0.6);
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateY(-2px);
+    }
+
+    .upload-area.dragover {
+      border-color: #4f46e5;
+      background: rgba(79, 70, 229, 0.1);
+      transform: scale(1.02);
+    }
+
+    .upload-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      opacity: 0.7;
+    }
+
+    .upload-text {
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+    }
+
+    .upload-subtext {
+      opacity: 0.7;
+      font-size: 0.9rem;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      margin-top: 16px;
+      box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
+    }
+
+    .search-section {
+      padding: 20px 30px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .search-bar {
+      width: 100%;
+      padding: 12px 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      color: #fff;
+      font-size: 1rem;
+      backdrop-filter: blur(10px);
+    }
+
+    .search-bar::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .search-bar:focus {
+      outline: none;
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+    }
+
+    .files-section {
+      padding: 30px;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #fff;
+    }
+
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+
+    .file-item {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 16px;
+      padding: 24px;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+      cursor: pointer;
+    }
+
+    .file-item:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .file-icon {
+      font-size: 2.5rem;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .file-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .file-type {
+      font-size: 0.9rem;
+      opacity: 0.7;
+      text-transform: uppercase;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+
+    .file-actions {
+      margin-top: 16px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .action-btn {
+      flex: 1;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      color: #fff;
+      text-decoration: none;
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .action-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .action-btn.primary {
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      border-color: transparent;
+    }
+
+    .action-btn.danger {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      border-color: transparent;
+    }
+
+    .action-btn.danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+    }
+
+    .file-preview {
+      margin-top: 16px;
+      padding: 16px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      overflow: hidden;
+      max-height: 120px;
+      position: relative;
+    }
+
+    .file-preview::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 30px;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.2));
+      pointer-events: none;
+    }
+
+    .stats-bar {
+      display: flex;
+      justify-content: space-around;
+      padding: 20px 30px;
+      background: rgba(255, 255, 255, 0.05);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #4f46e5;
+    }
+
+    .stat-label {
+      font-size: 0.9rem;
+      opacity: 0.8;
+    }
+
+    .fade-in {
+      animation: fadeIn 0.6s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 10px;
+      }
+
+      .container {
+        flex-direction: column;
+      }
+
+      .sidebar {
+        width: 100%;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.95);
+        backdrop-filter: blur(20px);
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+
+      .file-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .upload-area {
+        padding: 20px;
+      }
+
+      .stats-bar {
+        flex-direction: column;
+        gap: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="main-content">
+      <header>
+        <h1>📚 CodeVault</h1>
+        <p class="subtitle">Your personal notes and code repository</p>
+      </header>
+
+      <section class="upload-section">
+        <div class="upload-area" id="uploadArea">
+          <div class="upload-icon">☁️</div>
+          <div class="upload-text">Drag & drop your files here</div>
+          <div class="upload-subtext">or click to browse</div>
+          <button class="btn" onclick="document.getElementById('fileInput').click()">
+            Choose Files
+          </button>
+          <input type="file" id="fileInput" multiple accept=".txt,.py,.js,.html,.css,.pdf,.md,.json,.xml">
+        </div>
+      </section>
+
+      <section class="search-section">
+        <input type="text" class="search-bar" placeholder="🔍 Search your files..." id="searchInput">
+      </section>
+
+      <section class="files-section">
+        <h2 class="section-title">📁 Your Files</h2>
+        <div class="file-grid" id="fileGrid">
+          <!-- Existing files -->
+          <div class="file-item fade-in" data-filename="math_notes.pdf" data-type="pdf" data-size="2.4 MB" data-date="2024-01-15">
+            <span class="file-icon">📄</span>
+            <div class="file-name">Math Notes</div>
+            <div class="file-type">PDF Document</div>
+            <div class="file-actions">
+              <button class="action-btn primary" onclick="openSidebar('math_notes.pdf', 'PDF Document', '📄', '2.4 MB', '2024-01-15', 'notes/math_notes.pdf')">View</button>
+              <a href="notes/math_notes.pdf" download class="action-btn">Download</a>
+              <button class="action-btn danger" onclick="deleteFile(this, 'math_notes.pdf')">Delete</button>
+            </div>
+          </div>
+
+          <div class="file-item fade-in" data-filename="code_example.py" data-type="python" data-size="1.2 KB" data-date="2024-01-14">
+            <span class="file-icon">🐍</span>
+            <div class="file-name">Python Code Example</div>
+            <div class="file-type">Python Script</div>
+            <div class="file-preview">
+              <pre><code class="language-python"># Sample Python code
+def hello_world():
+    print("Hello, World!")
+    return True
+
+if __name__ == "__main__":
+    hello_world()</code></pre>
+            </div>
+            <div class="file-actions">
+              <button class="action-btn primary" onclick="openSidebar('code_example.py', 'Python Script', '🐍', '1.2 KB', '2024-01-14', 'notes/code_example.py', 'python')">View</button>
+              <a href="notes/code_example.py" download class="action-btn">Download</a>
+              <button class="action-btn danger" onclick="deleteFile(this, 'code_example.py')">Delete</button>
+            </div>
+          </div>
+
+          <div class="file-item fade-in" data-filename="summary.txt" data-type="text" data-size="856 B" data-date="2024-01-13">
+            <span class="file-icon">📝</span>
+            <div class="file-name">Summary</div>
+            <div class="file-type">Text Document</div>
+            <div class="file-preview">
+              <pre>This is a summary document containing
+important notes and key points from
+various sources and materials...</pre>
+            </div>
+            <div class="file-actions">
+              <button class="action-btn primary" onclick="openSidebar('summary.txt', 'Text Document', '📝', '856 B', '2024-01-13', 'notes/summary.txt', 'text')">View</button>
+              <a href="notes/summary.txt" download class="action-btn">Download</a>
+              <button class="action-btn danger" onclick="deleteFile(this, 'summary.txt')">Delete</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="stats-bar">
+        <div class="stat-item">
+          <div class="stat-number" id="totalFiles">3</div>
+          <div class="stat-label">Total Files</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" id="codeFiles">1</div>
+          <div class="stat-label">Code Files</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number" id="noteFiles">2</div>
+          <div class="stat-label">Note Files</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar for detailed view -->
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">File Details</div>
+        <button class="close-sidebar" onclick="closeSidebar()">×</button>
+      </div>
+      <div class="sidebar-content">
+        <div class="file-details">
+          <h3 id="sidebarFileName">File Name</h3>
+          <div class="detail-item">
+            <span class="detail-label">Type:</span>
+            <span class="detail-value" id="sidebarFileType">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Size:</span>
+            <span class="detail-value" id="sidebarFileSize">-</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Date:</span>
+            <span class="detail-value" id="sidebarFileDate">-</span>
+          </div>
+        </div>
+
+        <div class="sidebar-actions">
+          <a href="#" class="sidebar-btn primary" id="sidebarViewBtn" target="_blank">
+            👁️ View File
+          </a>
+          <a href="#" class="sidebar-btn secondary" id="sidebarDownloadBtn" download>
+            ⬇️ Download
+          </a>
+          <button class="sidebar-btn danger" id="sidebarDeleteBtn" onclick="deleteCurrentFile()">
+            🗑️ Delete File
+          </button>
+        </div>
+
+        <div id="sidebarPreview">
+          <div class="preview-title">Preview</div>
+          <div class="file-preview-full" id="sidebarPreviewContent">
+            Select a file to view preview...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // File upload functionality
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const fileGrid = document.getElementById('fileGrid');
+    const searchInput = document.getElementById('searchInput');
+    
+    let files = [];
+
+    // Drag and drop functionality
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+
+    uploadArea.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      handleFiles(droppedFiles);
+    });
+
+    uploadArea.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const selectedFiles = Array.from(e.target.files);
+      handleFiles(selectedFiles);
+    });
+
+    // Handle file uploads
+    function handleFiles(newFiles) {
+      newFiles.forEach(file => {
+        const fileData = {
+          name: file.name,
+          type: getFileType(file.name),
+          size: file.size,
+          content: null,
+          url: URL.createObjectURL(file)
+        };
+
+        // Read text files for preview
+        if (file.type.startsWith('text/') || file.name.endsWith('.py') || file.name.endsWith('.js') || file.name.endsWith('.css') || file.name.endsWith('.html')) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            fileData.content = e.target.result;
+            files.push(fileData);
+            addFileToGrid(fileData);
+            updateStats();
+          };
+          reader.readAsText(file);
+        } else {
+          files.push(fileData);
+          addFileToGrid(fileData);
+          updateStats();
+        }
+      });
+    }
+
+    // Get file type and icon
+    function getFileType(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      const types = {
+        'pdf': { type: 'PDF Document', icon: '📄' },
+        'txt': { type: 'Text Document', icon: '📝' },
+        'py': { type: 'Python Script', icon: '🐍' },
+        'js': { type: 'JavaScript File', icon: '🟨' },
+        'html': { type: 'HTML Document', icon: '🌐' },
+        'css': { type: 'CSS Stylesheet', icon: '🎨' },
+        'json': { type: 'JSON Data', icon: '📊' },
+        'md': { type: 'Markdown File', icon: '📋' },
+        'xml': { type: 'XML Document', icon: '📄' }
+      };
+      return types[ext] || { type: 'File', icon: '📁' };
+    }
+
+    // Add file to grid
+    function addFileToGrid(fileData) {
+      const fileInfo = getFileType(fileData.name);
+      const fileItem = document.createElement('div');
+      fileItem.className = 'file-item fade-in';
+      fileItem.setAttribute('data-filename', fileData.name);
+      fileItem.setAttribute('data-type', fileInfo.type.toLowerCase());
+
+      let previewHtml = '';
+      if (fileData.content) {
+        const language = getLanguageFromExtension(fileData.name);
+        const truncatedContent = fileData.content.substring(0, 200) + (fileData.content.length > 200 ? '...' : '');
+        previewHtml = `
+          <div class="file-preview">
+            <pre><code class="language-${language}">${escapeHtml(truncatedContent)}</code></pre>
+          </div>
+        `;
+      }
+
+      fileItem.innerHTML = `
+        <span class="file-icon">${fileInfo.icon}</span>
+        <div class="file-name">${fileData.name.replace(/\.[^/.]+$/, "")}</div>
+        <div class="file-type">${fileInfo.type}</div>
+        ${previewHtml}
+        <div class="file-actions">
+          <a href="${fileData.url}" target="_blank" class="action-btn primary">View</a>
+          <a href="${fileData.url}" download="${fileData.name}" class="action-btn">Download</a>
+        </div>
+      `;
+
+      fileGrid.appendChild(fileItem);
+
+      // Highlight syntax if preview exists
+      if (fileData.content) {
+        setTimeout(() => {
+          Prism.highlightAllUnder(fileItem);
+        }, 100);
+      }
+    }
+
+    // Helper functions
+    function getLanguageFromExtension(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      const languages = {
+        'py': 'python',
+        'js': 'javascript',
+        'html': 'html',
+        'css': 'css',
+        'json': 'json',
+        'xml': 'xml'
+      };
+      return languages[ext] || 'text';
+    }
+
+    function escapeHtml(unsafe) {
+      return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // Search functionality
+    searchInput.addEventListener('input', (e) => {
+      const searchTerm = e.target.value.toLowerCase();
+      const fileItems = document.querySelectorAll('.file-item');
+      
+      fileItems.forEach(item => {
+        const filename = item.getAttribute('data-filename').toLowerCase();
+        const filetype = item.getAttribute('data-type').toLowerCase();
+        
+        if (filename.includes(searchTerm) || filetype.includes(searchTerm)) {
+          item.style.display = 'block';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    });
+
+    // Update stats
+    function updateStats() {
+      const totalFiles = document.querySelectorAll('.file-item').length;
+      const codeFiles = document.querySelectorAll('[data-type*="script"], [data-type*="javascript"], [data-type*="python"]').length;
+      const noteFiles = totalFiles - codeFiles;
+
+      document.getElementById('totalFiles').textContent = totalFiles;
+      document.getElementById('codeFiles').textContent = codeFiles;
+      document.getElementById('noteFiles').textContent = noteFiles;
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      // Highlight existing code blocks
+      Prism.highlightAll();
+      
+      // Add some interactive animations
+      const fileItems = document.querySelectorAll('.file-item');
+      fileItems.forEach((item, index) => {
+        item.style.animationDelay = `${index * 0.1}s`;
+      });
+    });
+  </script>
+</body>
+</html>
