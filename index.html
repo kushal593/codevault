@@ -522,6 +522,11 @@
       position: relative;
     }
 
+    .file-preview pre {
+      margin: 0;
+      padding: 0;
+    }
+
     .file-preview::after {
       content: '';
       position: absolute;
@@ -648,7 +653,7 @@
     <div class="main-content">
       <header>
         <h1>📚 CodeVault</h1>
-        <p class="subtitle">Your personal notes and code repository with persistent storage</p>
+        <p class="subtitle">Your personal notes and code repository (session storage)</p>
       </header>
 
       <section class="upload-section">
@@ -752,7 +757,6 @@
   <div class="notification" id="notification"></div>
 
   <script>
-    // File management system with persistent storage
     const uploadArea = document.getElementById('uploadArea');
     const fileInput = document.getElementById('fileInput');
     const fileGrid = document.getElementById('fileGrid');
@@ -762,27 +766,21 @@
     const pasteFilename = document.getElementById('pasteFilename');
     const pasteSaveBtn = document.getElementById('pasteSaveBtn');
     
+    // Use in-memory storage instead of localStorage
     let files = {};
     let currentFile = null;
-    const STORAGE_KEY = 'codevault_files';
 
-    // Load files from storage on page load
     document.addEventListener('DOMContentLoaded', () => {
-      loadFilesFromStorage();
       updatePasteSaveButton();
-      
-      // Add event listeners for paste functionality
       pasteTextarea.addEventListener('input', updatePasteSaveButton);
       pasteFilename.addEventListener('input', updatePasteSaveButton);
-      
-      // Auto-detect file extension
       pasteTextarea.addEventListener('input', autoDetectFileType);
-      
-      // Add search functionality
       searchInput.addEventListener('input', handleSearch);
+      
+      // Load some sample files for demonstration
+      loadSampleFiles();
     });
 
-    // Drag and drop functionality
     uploadArea.addEventListener('dragover', (e) => {
       e.preventDefault();
       uploadArea.classList.add('dragover');
@@ -809,52 +807,99 @@
       handleFiles(selectedFiles);
     });
 
-    // Storage functions
-    function saveFilesToStorage() {
-      try {
-        const serializable = {};
-        for (const [id, file] of Object.entries(files)) {
-          serializable[id] = {
-            id: file.id,
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            date: file.date,
-            content: file.content,
-            dataUrl: file.dataUrl
-          };
-        }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
-      } catch (error) {
-        showNotification('Error saving files: Storage limit exceeded', 'error');
-      }
-    }
+    function loadSampleFiles() {
+      // Add sample files for demonstration
+      const samples = [
+        {
+          name: 'hello_world.py',
+          content: `# Hello World in Python
+print("Hello, World!")
 
-    function loadFilesFromStorage() {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          files = {};
-          
-          for (const [id, fileData] of Object.entries(parsed)) {
-            files[id] = fileData;
-            addFileToGrid(fileData);
-          }
-          
-          updateStats();
-          if (Object.keys(files).length > 0) {
-            showNotification(`Loaded ${Object.keys(files).length} files successfully!`);
-          }
+def greet(name):
+    return f"Hello, {name}!"
+
+if __name__ == "__main__":
+    user_name = input("Enter your name: ")
+    print(greet(user_name))`,
+          type: 'Python Script',
+          icon: '🐍'
+        },
+        {
+          name: 'styles.css',
+          content: `/* Modern CSS Styles */
+body {
+  font-family: 'Arial', sans-serif;
+  margin: 0;
+  padding: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}`,
+          type: 'CSS Stylesheet',
+          icon: '🎨'
+        },
+        {
+          name: 'app.js',
+          content: `// JavaScript Application
+const app = {
+  init() {
+    console.log('Application initialized');
+    this.bindEvents();
+  },
+  
+  bindEvents() {
+    document.addEventListener('DOMContentLoaded', () => {
+      this.setupUI();
+    });
+  },
+  
+  setupUI() {
+    const buttons = document.querySelectorAll('.btn');
+    buttons.forEach(btn => {
+      btn.addEventListener('click', this.handleClick);
+    });
+  },
+  
+  handleClick(event) {
+    console.log('Button clicked:', event.target);
+  }
+};
+
+app.init();`,
+          type: 'JavaScript File',
+          icon: '🟨'
         }
-      } catch (error) {
-        showNotification('Error loading files', 'error');
-      }
+      ];
+
+      samples.forEach(sample => {
+        const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        const fileData = {
+          id: fileId,
+          name: sample.name,
+          type: sample.type,
+          icon: sample.icon,
+          size: formatFileSize(new Blob([sample.content]).size),
+          date: new Date().toISOString().split('T')[0],
+          content: sample.content,
+          dataUrl: null
+        };
+        
+        files[fileId] = fileData;
+        addFileToGrid(fileData);
+      });
+      
+      updateStats();
+      showNotification(`Loaded ${samples.length} sample files!`);
     }
 
     function clearAllFiles() {
       if (confirm('Are you sure you want to delete all files? This action cannot be undone.')) {
-        localStorage.removeItem(STORAGE_KEY);
         files = {};
         fileGrid.innerHTML = '';
         updateStats();
@@ -863,50 +908,6 @@
       }
     }
 
-    // File handling functions
     function handleFiles(newFiles) {
       newFiles.forEach(file => {
-        const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        const fileInfo = getFileType(file.name);
-        
-        const fileData = {
-          id: fileId,
-          name: file.name,
-          type: fileInfo.type,
-          icon: fileInfo.icon,
-          size: formatFileSize(file.size),
-          date: new Date().toISOString().split('T')[0],
-          content: null,
-          dataUrl: null
-        };
-
-        // Handle text files
-        if (isTextFile(file)) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            fileData.content = e.target.result;
-            files[fileId] = fileData;
-            addFileToGrid(fileData);
-            saveFilesToStorage();
-            updateStats();
-          };
-          reader.readAsText(file);
-        } else {
-          // Handle binary files
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            fileData.dataUrl = e.target.result;
-            files[fileId] = fileData;
-            addFileToGrid(fileData);
-            saveFilesToStorage();
-            updateStats();
-          };
-          reader.readAsDataURL(file);
-        }
-      });
-      
-      showNotification(`Processing ${newFiles.length} file(s)...`);
-    }
-
-    function isTextFile(file) {
-      const textExtensions = ['.txt', '.py', '.js', '.
+        const fileId = Date.now().toString()
