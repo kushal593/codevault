@@ -177,6 +177,12 @@
       box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
     }
 
+    .sidebar-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
     .file-preview-full {
       background: rgba(0, 0, 0, 0.3);
       border-radius: 12px;
@@ -220,6 +226,27 @@
       opacity: 0.9;
       font-weight: 400;
       margin-bottom: 30px;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+
+    .status-online {
+      background: rgba(16, 185, 129, 0.2);
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-offline {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
     }
 
     .upload-section {
@@ -563,6 +590,20 @@
       opacity: 0.8;
     }
 
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
     .fade-in {
       animation: fadeIn 0.6s ease-out;
     }
@@ -693,6 +734,27 @@
       color: #fff;
     }
 
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      opacity: 0.7;
+    }
+
+    .empty-state-icon {
+      font-size: 4rem;
+      margin-bottom: 20px;
+    }
+
+    .empty-state-text {
+      font-size: 1.2rem;
+      margin-bottom: 10px;
+    }
+
+    .empty-state-subtext {
+      font-size: 1rem;
+      opacity: 0.7;
+    }
+
     @media (max-width: 768px) {
       body {
         padding: 10px;
@@ -752,7 +814,10 @@
     <div class="main-content">
       <header>
         <h1>📚 CodeVault</h1>
-        <p class="subtitle">Your personal notes and code repository (session storage)</p>
+        <p class="subtitle">
+          Your personal notes and code repository (server storage)
+          <span class="status-indicator" id="connectionStatus">🔄 Connecting...</span>
+        </p>
       </header>
 
       <section class="upload-section">
@@ -773,7 +838,9 @@
             <textarea class="paste-textarea" id="pasteTextarea" placeholder="Paste your code or text here..."></textarea>
             <div class="paste-controls">
               <input type="text" class="paste-filename" id="pasteFilename" placeholder="filename.py">
-              <button class="paste-save-btn" id="pasteSaveBtn" onclick="saveTextAsFile()">Save</button>
+              <button class="paste-save-btn" id="pasteSaveBtn" onclick="saveTextAsFile()">
+                <span id="pasteSaveBtnText">Save</span>
+              </button>
             </div>
           </div>
         </div>
@@ -787,6 +854,11 @@
       <section class="files-section">
         <h2 class="section-title">📁 Your Files</h2>
         <div class="file-grid" id="fileGrid">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-state-icon">📂</div>
+            <div class="empty-state-text">No files yet</div>
+            <div class="empty-state-subtext">Upload or paste your first file to get started</div>
+          </div>
         </div>
       </section>
 
@@ -866,6 +938,7 @@
   <div class="notification" id="notification"></div>
 
   <script>
+    // DOM Elements
     const uploadArea = document.getElementById('uploadArea');
     const fileInput = document.getElementById('fileInput');
     const fileGrid = document.getElementById('fileGrid');
@@ -874,23 +947,47 @@
     const pasteTextarea = document.getElementById('pasteTextarea');
     const pasteFilename = document.getElementById('pasteFilename');
     const pasteSaveBtn = document.getElementById('pasteSaveBtn');
+    const pasteSaveBtnText = document.getElementById('pasteSaveBtnText');
     const viewModal = document.getElementById('viewModal');
-    
-    // Use in-memory storage instead of localStorage
+    const connectionStatus = document.getElementById('connectionStatus');
+    const emptyState = document.getElementById('emptyState');
+
+    // Application state
     let files = {};
     let currentFile = null;
+    let isOnline = navigator.onLine;
 
-    document.addEventListener('DOMContentLoaded', () => {
+    // API Configuration
+    const API_BASE = '/api/files';
+
+    // Initialize application
+    document.addEventListener('DOMContentLoaded', async () => {
+      updateConnectionStatus();
       updatePasteSaveButton();
+      
+      // Event listeners
       pasteTextarea.addEventListener('input', updatePasteSaveButton);
       pasteFilename.addEventListener('input', updatePasteSaveButton);
       pasteTextarea.addEventListener('input', autoDetectFileType);
       searchInput.addEventListener('input', handleSearch);
       
-      // Load some sample files for demonstration
-      loadSampleFiles();
+      // Network status listeners
+      window.addEventListener('online', () => {
+        isOnline = true;
+        updateConnectionStatus();
+        loadFilesFromServer();
+      });
+      
+      window.addEventListener('offline', () => {
+        isOnline = false;
+        updateConnectionStatus();
+      });
+
+      // Load files from server
+      await loadFilesFromServer();
     });
 
+    // Drag and drop handlers
     uploadArea.addEventListener('dragover', (e) => {
       e.preventDefault();
       uploadArea.classList.add('dragover');
@@ -917,6 +1014,193 @@
       handleFiles(selectedFiles);
     });
 
+    // API Functions
+    async function apiRequest(url, options = {}) {
+      const config = {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        ...options
+      };
+
+      try {
+        const response = await fetch(url, config);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        return { success: true, data };
+      } catch (error) {
+        console.error('API request failed:', error);
+        return { success: false, error: error.message };
+      }
+    }
+
+    async function loadFilesFromServer() {
+      if (!isOnline) {
+        showNotification('Offline - showing cached files', 'error');
+        return;
+      }
+
+      updateConnectionStatus('loading');
+      
+      const result = await apiRequest(API_BASE);
+      
+      if (result.success) {
+        files = {};
+        fileGrid.innerHTML = '';
+        
+        if (result.data.files && result.data.files.length > 0) {
+          result.data.files.forEach(fileData => {
+            files[fileData.id] = fileData;
+            addFileToGrid(fileData);
+          });
+          emptyState.style.display = 'none';
+          showNotification(`Loaded ${result.data.files.length} files from server!`);
+        } else {
+          emptyState.style.display = 'block';
+        }
+        
+        updateStats();
+        updateConnectionStatus('online');
+      } else {
+        updateConnectionStatus('offline');
+        showNotification('Failed to load files from server', 'error');
+        
+        // Load sample files if server fails
+        if (Object.keys(files).length === 0) {
+          loadSampleFiles();
+        }
+      }
+    }
+
+    async function saveFileToServer(fileData) {
+      const result = await apiRequest(API_BASE, {
+        method: 'POST',
+        body: JSON.stringify(fileData)
+      });
+      
+      return result;
+    }
+
+    async function deleteFileFromServer(fileId) {
+      const result = await apiRequest(`${API_BASE}?id=${fileId}`, {
+        method: 'DELETE'
+      });
+      
+      return result;
+    }
+
+    async function clearAllFilesFromServer() {
+      const result = await apiRequest(`${API_BASE}?action=clear`, {
+        method: 'DELETE'
+      });
+      
+      return result;
+    }
+
+    // File handling functions
+    async function handleFiles(newFiles) {
+      for (const file of newFiles) {
+        const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        
+        // Check if the file is a text-based format
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+        const isTextFile = ['txt', 'py', 'js', 'html', 'css', 'md', 'json', 'xml'].includes(fileExtension);
+        
+        if (isTextFile) {
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            const fileData = {
+              id: fileId,
+              name: file.name,
+              type: getFileType(file.name),
+              icon: getFileIcon(file.name),
+              size: formatFileSize(file.size),
+              date: new Date().toISOString().split('T')[0],
+              content: e.target.result,
+            };
+            
+            await saveFileWithFeedback(fileData, file.name);
+          };
+          reader.readAsText(file);
+        } else {
+          // Handle non-text files
+          const fileData = {
+            id: fileId,
+            name: file.name,
+            type: getFileType(file.name),
+            icon: getFileIcon(file.name),
+            size: formatFileSize(file.size),
+            date: new Date().toISOString().split('T')[0],
+            content: `This is a binary file and cannot be previewed.\nDownload it to view the content.`,
+          };
+          
+          await saveFileWithFeedback(fileData, file.name);
+        }
+      }
+    }
+
+    async function saveFileWithFeedback(fileData, fileName) {
+      if (!isOnline) {
+        showNotification('Offline - file saved locally only', 'error');
+        files[fileData.id] = fileData;
+        addFileToGrid(fileData);
+        updateStats();
+        return;
+      }
+
+      const result = await saveFileToServer(fileData);
+      
+      if (result.success) {
+        files[fileData.id] = fileData;
+        addFileToGrid(fileData);
+        updateStats();
+        emptyState.style.display = 'none';
+        showNotification(`Uploaded: ${fileName}`);
+      } else {
+        showNotification(`Failed to upload: ${fileName}`, 'error');
+      }
+    }
+
+    async function saveTextAsFile() {
+      const text = pasteTextarea.value.trim();
+      const filename = pasteFilename.value.trim();
+      
+      if (!text || !filename) {
+        showNotification('Please enter both content and filename!', 'error');
+        return;
+      }
+
+      // Show loading state
+      pasteSaveBtn.disabled = true;
+      pasteSaveBtnText.innerHTML = '<span class="loading-spinner"></span>';
+
+      const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      const fileData = {
+        id: fileId,
+        name: filename,
+        type: getFileType(filename),
+        icon: getFileIcon(filename),
+        size: formatFileSize(new Blob([text]).size),
+        date: new Date().toISOString().split('T')[0],
+        content: text,
+      };
+
+      const result = await saveFileWithFeedback(fileData, filename);
+      
+      // Clear the paste area
+      pasteTextarea.value = '';
+      pasteFilename.value = '';
+      
+      // Reset button state
+      pasteSaveBtn.disabled = false;
+      pasteSaveBtnText.textContent = 'Save';
+      updatePasteSaveButton();
+    }
+
     function loadSampleFiles() {
       const samples = [
         {
@@ -930,8 +1214,6 @@ def greet(name):
 if __name__ == "__main__":
     user_name = input("Enter your name: ")
     print(greet(user_name))`,
-          type: 'Python Script',
-          icon: '🐍'
         },
         {
           name: 'styles.css',
@@ -950,8 +1232,6 @@ body {
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.1);
 }`,
-          type: 'CSS Stylesheet',
-          icon: '🎨'
         },
         {
           name: 'app.js',
@@ -981,16 +1261,13 @@ const app = {
 };
 
 app.init();`,
-          type: 'JavaScript File',
-          icon: '🟨'
         },
         {
           name: 'notes.md',
           content: `# My Notes 
 - **Important**: This is a test note.
-- Remember to fix the file upload bug.`,
-          type: 'Markdown File',
-          icon: '📝'
+- Remember to fix the file upload bug.
+- Server storage is working!`,
         }
       ];
 
@@ -1010,67 +1287,36 @@ app.init();`,
         addFileToGrid(fileData);
       });
       
+      emptyState.style.display = 'none';
       updateStats();
-      showNotification(`Loaded ${samples.length} sample files!`);
+      showNotification(`Loaded ${samples.length} sample files! (Offline mode)`);
     }
 
-    function clearAllFiles() {
-      if (confirm('Are you sure you want to delete all files? This action cannot be undone.')) {
+    async function clearAllFiles() {
+      if (!confirm('Are you sure you want to delete all files? This action cannot be undone.')) {
+        return;
+      }
+
+      if (!isOnline) {
+        showNotification('Cannot clear files while offline', 'error');
+        return;
+      }
+
+      const result = await clearAllFilesFromServer();
+      
+      if (result.success) {
         files = {};
         fileGrid.innerHTML = '';
+        emptyState.style.display = 'block';
         updateStats();
         closeSidebar();
         showNotification('All files cleared!');
+      } else {
+        showNotification('Failed to clear files from server', 'error');
       }
     }
 
-    function handleFiles(newFiles) {
-      // Loop through each file and process it
-      newFiles.forEach(file => {
-        const reader = new FileReader();
-        const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        
-        // Check if the file is a text-based format
-        const fileExtension = file.name.split('.').pop().toLowerCase();
-        const isTextFile = ['txt', 'py', 'js', 'html', 'css', 'md', 'json', 'xml'].includes(fileExtension);
-        
-        if (isTextFile) {
-          reader.onload = (e) => {
-            const fileData = {
-              id: fileId,
-              name: file.name,
-              type: getFileType(file.name),
-              icon: getFileIcon(file.name),
-              size: formatFileSize(file.size),
-              date: new Date().toISOString().split('T')[0],
-              content: e.target.result,
-            };
-            files[fileId] = fileData;
-            addFileToGrid(fileData);
-            updateStats();
-            showNotification(`Uploaded: ${file.name}`);
-          };
-          reader.readAsText(file);
-        } else {
-          // Handle non-text files (like PDF) by storing a placeholder
-          const fileData = {
-            id: fileId,
-            name: file.name,
-            type: getFileType(file.name),
-            icon: getFileIcon(file.name),
-            size: formatFileSize(file.size),
-            date: new Date().toISOString().split('T')[0],
-            content: `This is a binary file and cannot be previewed.
-Download it to view the content.`,
-          };
-          files[fileId] = fileData;
-          addFileToGrid(fileData);
-          updateStats();
-          showNotification(`Uploaded: ${file.name}`);
-        }
-      });
-    }
-
+    // Utility functions
     function getFileIcon(filename) {
       const ext = filename.split('.').pop().toLowerCase();
       if (['py'].includes(ext)) return '🐍';
@@ -1124,40 +1370,7 @@ Download it to view the content.`,
       fileGrid.appendChild(div);
     }
 
-    function saveTextAsFile() {
-      const text = pasteTextarea.value.trim();
-      const filename = pasteFilename.value.trim();
-      
-      if (!text || !filename) {
-        showNotification('Please enter both content and filename!', 'error');
-        return;
-      }
-
-      const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-      const fileData = {
-        id: fileId,
-        name: filename,
-        type: getFileType(filename),
-        icon: getFileIcon(filename),
-        size: formatFileSize(new Blob([text]).size),
-        date: new Date().toISOString().split('T')[0],
-        content: text,
-      };
-
-      files[fileId] = fileData;
-      addFileToGrid(fileData);
-      updateStats();
-      
-      // Clear the paste area
-      pasteTextarea.value = '';
-      pasteFilename.value = '';
-      updatePasteSaveButton();
-      
-      showNotification(`Created: ${filename}`);
-    }
-    
-    // --- Sidebar Functions ---
-
+    // Sidebar functions
     function openSidebar(fileId) {
       const file = files[fileId];
       if (!file) return;
@@ -1178,6 +1391,18 @@ Download it to view the content.`,
       const sidebarCodeBlock = previewContent.querySelector('pre code');
       if (sidebarCodeBlock && window.Prism) {
         Prism.highlightElement(sidebarCodeBlock);
+      }
+      
+      // Update button states
+      const deleteBtn = document.getElementById('sidebarDeleteBtn');
+      const downloadBtn = document.getElementById('sidebarDownloadBtn');
+      
+      if (!isOnline) {
+        deleteBtn.disabled = true;
+        deleteBtn.innerHTML = '🔒 Offline';
+      } else {
+        deleteBtn.disabled = false;
+        deleteBtn.innerHTML = '🗑️ Delete File';
       }
       
       sidebar.classList.add('active');
@@ -1228,40 +1453,105 @@ Download it to view the content.`,
       showNotification(`Downloaded: ${currentFile.name}`);
     }
 
-    function deleteCurrentFile() {
+    async function deleteCurrentFile() {
       if (!currentFile || !confirm(`Are you sure you want to delete ${currentFile.name}?`)) {
         return;
       }
       
-      const fileId = currentFile.id;
-      delete files[fileId];
-      
-      // Find and remove the file item from the grid
-      const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
-      if (fileItem) {
-        fileItem.classList.add('fade-out');
-        setTimeout(() => {
-          fileItem.remove();
-          updateStats();
-        }, 300);
+      if (!isOnline) {
+        showNotification('Cannot delete files while offline', 'error');
+        return;
       }
       
-      closeSidebar();
-      showNotification(`Deleted: ${currentFile.name}`, 'error');
+      const fileId = currentFile.id;
+      const fileName = currentFile.name;
+      
+      // Disable delete button during operation
+      const deleteBtn = document.getElementById('sidebarDeleteBtn');
+      deleteBtn.disabled = true;
+      deleteBtn.innerHTML = '<span class="loading-spinner"></span> Deleting...';
+      
+      const result = await deleteFileFromServer(fileId);
+      
+      if (result.success) {
+        delete files[fileId];
+        
+        // Find and remove the file item from the grid
+        const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileItem) {
+          fileItem.classList.add('fade-out');
+          setTimeout(() => {
+            fileItem.remove();
+            updateStats();
+            
+            // Show empty state if no files left
+            if (Object.keys(files).length === 0) {
+              emptyState.style.display = 'block';
+            }
+          }, 300);
+        }
+        
+        closeSidebar();
+        showNotification(`Deleted: ${fileName}`, 'error');
+      } else {
+        showNotification('Failed to delete file from server', 'error');
+        // Re-enable delete button
+        deleteBtn.disabled = false;
+        deleteBtn.innerHTML = '🗑️ Delete File';
+      }
     }
 
+    // Search function
     function handleSearch(e) {
       const query = e.target.value.toLowerCase();
       const fileItems = document.querySelectorAll('.file-item');
+      let visibleCount = 0;
+      
       fileItems.forEach(item => {
         const fileName = item.querySelector('.file-name').textContent.toLowerCase();
         const fileContent = item.querySelector('.file-preview').textContent.toLowerCase();
         if (fileName.includes(query) || fileContent.includes(query)) {
           item.style.display = 'block';
+          visibleCount++;
         } else {
           item.style.display = 'none';
         }
       });
+      
+      // Show/hide empty state based on search results
+      if (query && visibleCount === 0) {
+        emptyState.innerHTML = `
+          <div class="empty-state-icon">🔍</div>
+          <div class="empty-state-text">No files found</div>
+          <div class="empty-state-subtext">Try adjusting your search terms</div>
+        `;
+        emptyState.style.display = 'block';
+      } else if (!query && Object.keys(files).length === 0) {
+        emptyState.innerHTML = `
+          <div class="empty-state-icon">📂</div>
+          <div class="empty-state-text">No files yet</div>
+          <div class="empty-state-subtext">Upload or paste your first file to get started</div>
+        `;
+        emptyState.style.display = 'block';
+      } else {
+        emptyState.style.display = 'none';
+      }
+    }
+
+    // Status and utility functions
+    function updateConnectionStatus(status = null) {
+      const statusElement = document.getElementById('connectionStatus');
+      
+      if (status === 'loading') {
+        statusElement.className = 'status-indicator status-offline';
+        statusElement.textContent = '🔄 Loading...';
+      } else if (status === 'online' || isOnline) {
+        statusElement.className = 'status-indicator status-online';
+        statusElement.textContent = '✅ Online';
+      } else {
+        statusElement.className = 'status-indicator status-offline';
+        statusElement.textContent = '❌ Offline';
+      }
     }
 
     function updateStats() {
@@ -1303,7 +1593,13 @@ Download it to view the content.`,
     function updatePasteSaveButton() {
       const text = pasteTextarea.value.trim();
       const filename = pasteFilename.value.trim();
-      pasteSaveBtn.disabled = !(text && filename);
+      pasteSaveBtn.disabled = !(text && filename) || !isOnline;
+      
+      if (!isOnline && (text || filename)) {
+        pasteSaveBtn.title = 'Cannot save files while offline';
+      } else {
+        pasteSaveBtn.title = '';
+      }
     }
 
     function autoDetectFileType() {
@@ -1330,7 +1626,7 @@ Download it to view the content.`,
       updatePasteSaveButton();
     }
 
-    // Close modal when clicking outside
+    // Event handlers
     window.addEventListener('click', (e) => {
       if (e.target === viewModal) {
         closeViewModal();
