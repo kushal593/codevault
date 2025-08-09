@@ -13,7 +13,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
   <style>
-    /* ... (Your CSS code remains the same) ... */
     * {
       margin: 0;
       padding: 0;
@@ -568,6 +567,10 @@
       animation: fadeIn 0.6s ease-out;
     }
 
+    .fade-out {
+      animation: fadeOut 0.3s ease-out forwards;
+    }
+
     @keyframes fadeIn {
       from {
         opacity: 0;
@@ -576,6 +579,17 @@
       to {
         opacity: 1;
         transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateY(-20px);
       }
     }
 
@@ -600,6 +614,83 @@
     .notification.error {
       background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
       box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+    }
+
+    /* Modal styles */
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(20px);
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      max-width: 90vw;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      padding: 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 5px;
+      border-radius: 8px;
+      transition: background 0.3s ease;
+    }
+
+    .modal-close:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .modal-code {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 20px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      color: #fff;
     }
 
     @media (max-width: 768px) {
@@ -648,6 +739,11 @@
         flex-direction: column;
         gap: 12px;
       }
+
+      .modal-content {
+        max-width: 95vw;
+        max-height: 95vh;
+      }
     }
   </style>
 </head>
@@ -691,7 +787,7 @@
       <section class="files-section">
         <h2 class="section-title">📁 Your Files</h2>
         <div class="file-grid" id="fileGrid">
-          </div>
+        </div>
       </section>
 
       <div class="stats-bar">
@@ -754,6 +850,19 @@
     </div>
   </div>
 
+  <!-- View Content Modal -->
+  <div class="modal" id="viewModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle">View File</div>
+        <button class="modal-close" onclick="closeViewModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-code" id="modalCode">Loading...</div>
+      </div>
+    </div>
+  </div>
+
   <div class="notification" id="notification"></div>
 
   <script>
@@ -765,6 +874,7 @@
     const pasteTextarea = document.getElementById('pasteTextarea');
     const pasteFilename = document.getElementById('pasteFilename');
     const pasteSaveBtn = document.getElementById('pasteSaveBtn');
+    const viewModal = document.getElementById('viewModal');
     
     // Use in-memory storage instead of localStorage
     let files = {};
@@ -989,6 +1099,7 @@ Download it to view the content.`,
     function addFileToGrid(fileData) {
       const div = document.createElement('div');
       div.className = 'file-item fade-in';
+      div.setAttribute('data-file-id', fileData.id);
       const fileExtension = fileData.name.split('.').pop().toLowerCase();
       const previewContent = fileData.content.substring(0, 200).replace(/</g, '&lt;').replace(/>/g, '&gt;');
       
@@ -1006,12 +1117,46 @@ Download it to view the content.`,
       
       // Syntax highlight the code preview
       const codeBlock = div.querySelector('pre code');
-      Prism.highlightElement(codeBlock);
+      if (codeBlock && window.Prism) {
+        Prism.highlightElement(codeBlock);
+      }
       
       fileGrid.appendChild(div);
     }
+
+    function saveTextAsFile() {
+      const text = pasteTextarea.value.trim();
+      const filename = pasteFilename.value.trim();
+      
+      if (!text || !filename) {
+        showNotification('Please enter both content and filename!', 'error');
+        return;
+      }
+
+      const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      const fileData = {
+        id: fileId,
+        name: filename,
+        type: getFileType(filename),
+        icon: getFileIcon(filename),
+        size: formatFileSize(new Blob([text]).size),
+        date: new Date().toISOString().split('T')[0],
+        content: text,
+      };
+
+      files[fileId] = fileData;
+      addFileToGrid(fileData);
+      updateStats();
+      
+      // Clear the paste area
+      pasteTextarea.value = '';
+      pasteFilename.value = '';
+      updatePasteSaveButton();
+      
+      showNotification(`Created: ${filename}`);
+    }
     
-    // --- New/Updated Functions ---
+    // --- Sidebar Functions ---
 
     function openSidebar(fileId) {
       const file = files[fileId];
@@ -1028,7 +1173,12 @@ Download it to view the content.`,
       const fileExtension = file.name.split('.').pop().toLowerCase();
       
       previewContent.innerHTML = `<pre class="language-${fileExtension}"><code>${file.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
-      Prism.highlightElement(previewContent.querySelector('pre code'));
+      
+      // Highlight syntax in sidebar
+      const sidebarCodeBlock = previewContent.querySelector('pre code');
+      if (sidebarCodeBlock && window.Prism) {
+        Prism.highlightElement(sidebarCodeBlock);
+      }
       
       sidebar.classList.add('active');
     }
@@ -1038,16 +1188,43 @@ Download it to view the content.`,
       currentFile = null;
     }
 
+    function viewCurrentFile() {
+      if (!currentFile) return;
+
+      const modal = document.getElementById('viewModal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalCode = document.getElementById('modalCode');
+      
+      modalTitle.textContent = currentFile.name;
+      const fileExtension = currentFile.name.split('.').pop().toLowerCase();
+      
+      modalCode.innerHTML = `<pre class="language-${fileExtension}"><code>${currentFile.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
+      
+      // Highlight syntax in modal
+      const modalCodeBlock = modalCode.querySelector('pre code');
+      if (modalCodeBlock && window.Prism) {
+        Prism.highlightElement(modalCodeBlock);
+      }
+      
+      modal.classList.add('active');
+    }
+
+    function closeViewModal() {
+      const modal = document.getElementById('viewModal');
+      modal.classList.remove('active');
+    }
+
     function downloadCurrentFile() {
       if (!currentFile) return;
 
-      const blob = new Blob([currentFile.content], { type: currentFile.type });
+      const blob = new Blob([currentFile.content], { type: 'text/plain' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = currentFile.name;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
       showNotification(`Downloaded: ${currentFile.name}`);
     }
 
@@ -1059,14 +1236,17 @@ Download it to view the content.`,
       const fileId = currentFile.id;
       delete files[fileId];
       
-      const fileItem = document.querySelector(`.file-item[onclick="openSidebar('${fileId}')"]`)?.parentElement;
+      // Find and remove the file item from the grid
+      const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
       if (fileItem) {
         fileItem.classList.add('fade-out');
-        fileItem.addEventListener('animationend', () => fileItem.remove());
+        setTimeout(() => {
+          fileItem.remove();
+          updateStats();
+        }, 300);
       }
       
       closeSidebar();
-      updateStats();
       showNotification(`Deleted: ${currentFile.name}`, 'error');
     }
 
@@ -1075,7 +1255,8 @@ Download it to view the content.`,
       const fileItems = document.querySelectorAll('.file-item');
       fileItems.forEach(item => {
         const fileName = item.querySelector('.file-name').textContent.toLowerCase();
-        if (fileName.includes(query)) {
+        const fileContent = item.querySelector('.file-preview').textContent.toLowerCase();
+        if (fileName.includes(query) || fileContent.includes(query)) {
           item.style.display = 'block';
         } else {
           item.style.display = 'none';
@@ -1141,10 +1322,31 @@ Download it to view the content.`,
           detectedType = 'css';
         } else if (text.includes('<html')) {
           detectedType = 'html';
+        } else if (text.includes('def ') || text.includes('import ')) {
+          detectedType = 'py';
         }
         pasteFilename.value = `file.${detectedType}`;
       }
+      updatePasteSaveButton();
     }
+
+    // Close modal when clicking outside
+    window.addEventListener('click', (e) => {
+      if (e.target === viewModal) {
+        closeViewModal();
+      }
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (viewModal.classList.contains('active')) {
+          closeViewModal();
+        } else if (sidebar.classList.contains('active')) {
+          closeSidebar();
+        }
+      }
+    });
   </script>
 </body>
 </html>
