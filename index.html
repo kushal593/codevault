@@ -9,8 +9,11 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-html.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js"></script>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
   <style>
+    /* ... (Your CSS code remains the same) ... */
     * {
       margin: 0;
       padding: 0;
@@ -688,8 +691,7 @@
       <section class="files-section">
         <h2 class="section-title">📁 Your Files</h2>
         <div class="file-grid" id="fileGrid">
-          <!-- Files will be loaded here -->
-        </div>
+          </div>
       </section>
 
       <div class="stats-bar">
@@ -708,7 +710,6 @@
       </div>
     </div>
 
-    <!-- Sidebar for detailed view -->
     <div class="sidebar" id="sidebar">
       <div class="sidebar-header">
         <div class="sidebar-title">File Details</div>
@@ -753,7 +754,6 @@
     </div>
   </div>
 
-  <!-- Notification -->
   <div class="notification" id="notification"></div>
 
   <script>
@@ -808,7 +808,6 @@
     });
 
     function loadSampleFiles() {
-      // Add sample files for demonstration
       const samples = [
         {
           name: 'hello_world.py',
@@ -874,6 +873,14 @@ const app = {
 app.init();`,
           type: 'JavaScript File',
           icon: '🟨'
+        },
+        {
+          name: 'notes.md',
+          content: `# My Notes 
+- **Important**: This is a test note.
+- Remember to fix the file upload bug.`,
+          type: 'Markdown File',
+          icon: '📝'
         }
       ];
 
@@ -882,12 +889,11 @@ app.init();`,
         const fileData = {
           id: fileId,
           name: sample.name,
-          type: sample.type,
-          icon: sample.icon,
+          type: getFileType(sample.name),
+          icon: getFileIcon(sample.name),
           size: formatFileSize(new Blob([sample.content]).size),
           date: new Date().toISOString().split('T')[0],
           content: sample.content,
-          dataUrl: null
         };
         
         files[fileId] = fileData;
@@ -909,76 +915,236 @@ app.init();`,
     }
 
     function handleFiles(newFiles) {
-  newFiles.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-      const fileData = {
-        id: fileId,
-        name: file.name,
-        type: file.type || 'Unknown',
-        icon: getFileIcon(file.name),
-        size: formatFileSize(file.size),
-        date: new Date().toISOString().split('T')[0],
-        content: e.target.result,
-        dataUrl: null
-      };
-      files[fileId] = fileData;
-      addFileToGrid(fileData);
+      // Loop through each file and process it
+      newFiles.forEach(file => {
+        const reader = new FileReader();
+        const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        
+        // Check if the file is a text-based format
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+        const isTextFile = ['txt', 'py', 'js', 'html', 'css', 'md', 'json', 'xml'].includes(fileExtension);
+        
+        if (isTextFile) {
+          reader.onload = (e) => {
+            const fileData = {
+              id: fileId,
+              name: file.name,
+              type: getFileType(file.name),
+              icon: getFileIcon(file.name),
+              size: formatFileSize(file.size),
+              date: new Date().toISOString().split('T')[0],
+              content: e.target.result,
+            };
+            files[fileId] = fileData;
+            addFileToGrid(fileData);
+            updateStats();
+            showNotification(`Uploaded: ${file.name}`);
+          };
+          reader.readAsText(file);
+        } else {
+          // Handle non-text files (like PDF) by storing a placeholder
+          const fileData = {
+            id: fileId,
+            name: file.name,
+            type: getFileType(file.name),
+            icon: getFileIcon(file.name),
+            size: formatFileSize(file.size),
+            date: new Date().toISOString().split('T')[0],
+            content: `This is a binary file and cannot be previewed.
+Download it to view the content.`,
+          };
+          files[fileId] = fileData;
+          addFileToGrid(fileData);
+          updateStats();
+          showNotification(`Uploaded: ${file.name}`);
+        }
+      });
+    }
+
+    function getFileIcon(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      if (['py'].includes(ext)) return '🐍';
+      if (['js'].includes(ext)) return '🟨';
+      if (['css'].includes(ext)) return '🎨';
+      if (['html', 'htm'].includes(ext)) return '🌐';
+      if (['md', 'txt'].includes(ext)) return '📝';
+      if (['json'].includes(ext)) return '🔧';
+      if (['pdf'].includes(ext)) return '📄';
+      return '📄';
+    }
+
+    function getFileType(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      if (['py'].includes(ext)) return 'Python Script';
+      if (['js'].includes(ext)) return 'JavaScript File';
+      if (['css'].includes(ext)) return 'CSS Stylesheet';
+      if (['html', 'htm'].includes(ext)) return 'HTML Document';
+      if (['md'].includes(ext)) return 'Markdown File';
+      if (['txt'].includes(ext)) return 'Text File';
+      if (['json'].includes(ext)) return 'JSON File';
+      if (['pdf'].includes(ext)) return 'PDF Document';
+      return 'Unknown';
+    }
+
+    function addFileToGrid(fileData) {
+      const div = document.createElement('div');
+      div.className = 'file-item fade-in';
+      const fileExtension = fileData.name.split('.').pop().toLowerCase();
+      const previewContent = fileData.content.substring(0, 200).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      
+      div.innerHTML = `
+        <span class="file-icon">${fileData.icon}</span>
+        <div class="file-name">${fileData.name}</div>
+        <div class="file-type">${fileData.type}</div>
+        <div class="file-preview">
+          <pre class="language-${fileExtension}"><code>${previewContent}</code></pre>
+        </div>
+        <div class="file-actions">
+          <button class="action-btn primary" onclick="openSidebar('${fileData.id}')">Details</button>
+        </div>
+      `;
+      
+      // Syntax highlight the code preview
+      const codeBlock = div.querySelector('pre code');
+      Prism.highlightElement(codeBlock);
+      
+      fileGrid.appendChild(div);
+    }
+    
+    // --- New/Updated Functions ---
+
+    function openSidebar(fileId) {
+      const file = files[fileId];
+      if (!file) return;
+
+      currentFile = file;
+      document.getElementById('sidebarFileName').textContent = file.name;
+      document.getElementById('sidebarFileType').textContent = file.type;
+      document.getElementById('sidebarFileSize').textContent = file.size;
+      document.getElementById('sidebarFileDate').textContent = file.date;
+      
+      // Update sidebar preview
+      const previewContent = document.getElementById('sidebarPreviewContent');
+      const fileExtension = file.name.split('.').pop().toLowerCase();
+      
+      previewContent.innerHTML = `<pre class="language-${fileExtension}"><code>${file.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
+      Prism.highlightElement(previewContent.querySelector('pre code'));
+      
+      sidebar.classList.add('active');
+    }
+
+    function closeSidebar() {
+      sidebar.classList.remove('active');
+      currentFile = null;
+    }
+
+    function downloadCurrentFile() {
+      if (!currentFile) return;
+
+      const blob = new Blob([currentFile.content], { type: currentFile.type });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = currentFile.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showNotification(`Downloaded: ${currentFile.name}`);
+    }
+
+    function deleteCurrentFile() {
+      if (!currentFile || !confirm(`Are you sure you want to delete ${currentFile.name}?`)) {
+        return;
+      }
+      
+      const fileId = currentFile.id;
+      delete files[fileId];
+      
+      const fileItem = document.querySelector(`.file-item[onclick="openSidebar('${fileId}')"]`)?.parentElement;
+      if (fileItem) {
+        fileItem.classList.add('fade-out');
+        fileItem.addEventListener('animationend', () => fileItem.remove());
+      }
+      
+      closeSidebar();
       updateStats();
-      showNotification(`Uploaded: ${file.name}`);
-    };
-    reader.readAsText(file); // for text-based files
-  });
-}
-  function getFileIcon(filename) {
-  const ext = filename.split('.').pop().toLowerCase();
-  if (['py'].includes(ext)) return '🐍';
-  if (['js'].includes(ext)) return '🟨';
-  if (['css'].includes(ext)) return '🎨';
-  if (['html', 'htm'].includes(ext)) return '🌐';
-  if (['txt', 'md'].includes(ext)) return '📝';
-  return '📄';
-}
-  function saveTextAsFile() {
-  const text = pasteTextarea.value.trim();
-  const filename = pasteFilename.value.trim();
-  if (!text || !filename) return;
+      showNotification(`Deleted: ${currentFile.name}`, 'error');
+    }
 
-  const fileId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-  const fileData = {
-    id: fileId,
-    name: filename,
-    type: 'Text/Code',
-    icon: getFileIcon(filename),
-    size: formatFileSize(new Blob([text]).size),
-    date: new Date().toISOString().split('T')[0],
-    content: text,
-    dataUrl: null
-  };
+    function handleSearch(e) {
+      const query = e.target.value.toLowerCase();
+      const fileItems = document.querySelectorAll('.file-item');
+      fileItems.forEach(item => {
+        const fileName = item.querySelector('.file-name').textContent.toLowerCase();
+        if (fileName.includes(query)) {
+          item.style.display = 'block';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    }
 
-  files[fileId] = fileData;
-  addFileToGrid(fileData);
-  updateStats();
-  showNotification(`Saved: ${filename}`);
+    function updateStats() {
+      const fileCount = Object.keys(files).length;
+      document.getElementById('totalFiles').textContent = fileCount;
+      
+      const codeExtensions = ['py', 'js', 'html', 'css', 'json', 'xml'];
+      const codeFilesCount = Object.values(files).filter(file => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        return codeExtensions.includes(ext);
+      }).length;
+      document.getElementById('codeFiles').textContent = codeFilesCount;
+      
+      const noteFilesCount = fileCount - codeFilesCount;
+      document.getElementById('noteFiles').textContent = noteFilesCount;
+    }
 
-  // Clear inputs
-  pasteTextarea.value = '';
-  pasteFilename.value = '';
-  updatePasteSaveButton();
-}
-  function addFileToGrid(fileData) {
-  const div = document.createElement('div');
-  div.className = 'file-item fade-in';
-  div.innerHTML = `
-    <span class="file-icon">${fileData.icon}</span>
-    <div class="file-name">${fileData.name}</div>
-    <div class="file-type">${fileData.type}</div>
-    <div class="file-actions">
-      <button class="action-btn primary" onclick="openSidebar('${fileData.id}')">Details</button>
-    </div>
-  `;
-  fileGrid.appendChild(div);
-}
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 B';
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+      return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+    }
+    
+    function showNotification(message, type = 'success') {
+      const notification = document.getElementById('notification');
+      notification.textContent = message;
+      notification.classList.add('show');
+      if (type === 'error') {
+        notification.classList.add('error');
+      } else {
+        notification.classList.remove('error');
+      }
+      setTimeout(() => {
+        notification.classList.remove('show');
+      }, 3000);
+    }
+    
+    function updatePasteSaveButton() {
+      const text = pasteTextarea.value.trim();
+      const filename = pasteFilename.value.trim();
+      pasteSaveBtn.disabled = !(text && filename);
+    }
+
+    function autoDetectFileType() {
+      const text = pasteTextarea.value.trim();
+      if (!pasteFilename.value.trim() && text) {
+        let detectedType = 'txt';
+        try {
+          JSON.parse(text);
+          detectedType = 'json';
+        } catch (e) {
+          // Not JSON
+        }
+        if (text.includes('function') || text.includes('const')) {
+          detectedType = 'js';
+        } else if (text.includes('body {')) {
+          detectedType = 'css';
+        } else if (text.includes('<html')) {
+          detectedType = 'html';
+        }
+        pasteFilename.value = `file.${detectedType}`;
+      }
+    }
   </script>
-
+</body>
+</html>
