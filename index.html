@@ -32,6 +32,31 @@
       min-height:100vh;
     }
 
+
+    .credit-label {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      z-index: 10;
+      background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 12px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--gold);
+      text-shadow: 0 2px 8px rgba(255, 209, 102, 0.3);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: all 0.3s ease;
+    }
+
+    .credit-label:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+      background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.08));
+    }
+
     /* Floating hearts animation */
     .floating-hearts {
       position: fixed;
@@ -453,6 +478,8 @@
   </style>
 </head>
 <body>
+
+  <div class="credit-label">Made By: Kushal</div>
   <!-- Floating hearts background -->
   <div class="floating-hearts" id="floatingHearts"></div>
 
