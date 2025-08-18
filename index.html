@@ -564,28 +564,44 @@
 
     class Confetti{
       constructor(){
-        this.x = rand(0,W);
-        this.y = rand(-H,0);
-        this.size = rand(6,14);
-        this.speed = rand(1.5,4);
-        this.angle = rand(0,360);
-        this.spin = rand(-0.2,0.2);
-        
-        const colors = ['#ff6b9d', '#c084fc', '#ffd166', '#ff9fbf', '#e879f9', '#ffb86b'];
-        this.color = colors[Math.floor(Math.random() * colors.length)];
-        
-        const shapes = ['heart', 'circle', 'star', 'rect'];
-        this.shape = shapes[Math.floor(Math.random() * shapes.length)];
-      }
+  const bounds = getConfettiBounds();
+  this.x = rand(bounds.minX, bounds.maxX);
+  this.y = rand(bounds.minY, bounds.minY + 50);
+  this.size = rand(6,14);
+  this.speed = rand(1.5,4);
+  this.angle = rand(0,360);
+  this.spin = rand(-0.2,0.2);
+  this.bounds = bounds;
+  
+  const colors = ['#ff6b9d', '#c084fc', '#ffd166', '#ff9fbf', '#e879f9', '#ffb86b'];
+  this.color = colors[Math.floor(Math.random() * colors.length)];
+  
+  const shapes = ['heart', 'circle', 'star', 'rect'];
+  this.shape = shapes[Math.floor(Math.random() * shapes.length)];
+}
       
       update(){
-        this.y += this.speed;
-        this.x += Math.sin(this.y/30)*2;
-        this.angle += this.spin;
-        if(this.y>H+30){this.y=rand(-50,0);this.x=rand(0,W)}
-      }
+  this.y += this.speed;
+  this.x += Math.sin(this.y/30)*2;
+  this.angle += this.spin;
+  
+  // Reset position when confetti goes below the confetti area
+  if(this.y > this.bounds.maxY){
+    this.y = rand(this.bounds.minY, this.bounds.minY + 50);
+    this.x = rand(this.bounds.minX, this.bounds.maxX);
+  }
+  
+  // Keep confetti within horizontal bounds
+  if(this.x < this.bounds.minX || this.x > this.bounds.maxX) {
+    this.x = rand(this.bounds.minX, this.bounds.maxX);
+  }
+}
       
       draw(){
+        if(this.x < this.bounds.minX || this.x > this.bounds.maxX || 
+     this.y < this.bounds.minY || this.y > this.bounds.maxY) {
+    return;
+  }
         ctx.save();
         ctx.translate(this.x,this.y);
         ctx.rotate(this.angle);
@@ -810,6 +826,40 @@
         setTimeout(()=>{ running=false; }, 8000);
       });
     }
+
+
+
+
+    // Add this new function after the canvas setup
+function getConfettiBounds() {
+  const isMobile = window.innerWidth <= 768;
+  if (isMobile) {
+    // For mobile: limit confetti to phone screen area centered on screen
+    const confettiWidth = Math.min(W, 450);
+    const confettiHeight = Math.min(H, 800);
+    const offsetX = (W - confettiWidth) / 2;
+    const offsetY = (H - confettiHeight) / 2;
+    
+    return {
+      minX: offsetX,
+      maxX: offsetX + confettiWidth,
+      minY: offsetY - 100,
+      maxY: offsetY + confettiHeight + 100,
+      width: confettiWidth,
+      height: confettiHeight
+    };
+  } else {
+    // For desktop: use full screen
+    return {
+      minX: 0,
+      maxX: W,
+      minY: -100,
+      maxY: H + 100,
+      width: W,
+      height: H
+    };
+  }
+}
   </script>
 </body>
 </html>
