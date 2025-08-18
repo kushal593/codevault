@@ -653,11 +653,21 @@
     function clearConfs(){ confs=[]; }
 
     let running=false;
-    function loop(){
-      ctx.clearRect(0,0,W,H);
-      for(let c of confs){ c.update(); c.draw(); }
-      if(running) requestAnimationFrame(loop);
-    }
+let lastTime = 0;
+function loop(currentTime){
+  // Throttle to 30fps on mobile for smoother performance
+  const isMobile = window.innerWidth <= 768;
+  const targetFPS = isMobile ? 30 : 60;
+  const interval = 1000 / targetFPS;
+  
+  if (currentTime - lastTime >= interval) {
+    ctx.clearRect(0,0,W,H);
+    for(let c of confs){ c.update(); c.draw(); }
+    lastTime = currentTime;
+  }
+  
+  if(running) requestAnimationFrame(loop);
+}
 
     // Floating hearts
     function createFloatingHeart() {
@@ -708,13 +718,21 @@
     const downloadBtn = document.getElementById('downloadBtn');
 
     celebrateBtn.addEventListener('click', ()=>{
-      running = true; clearConfs(); spawn(150); loop();
-      // Create extra hearts
-      for(let i = 0; i < 8; i++) {
-        setTimeout(createFloatingHeart, i * 200);
-      }
-      setTimeout(()=>{ running=false; }, 10000);
-    });
+  const isMobile = window.innerWidth <= 768;
+  const confettiCount = isMobile ? 60 : 150; // Much fewer particles on mobile
+  
+  running = true; 
+  clearConfs(); 
+  spawn(confettiCount); 
+  loop();
+  
+  // Create extra hearts
+  const heartCount = isMobile ? 4 : 8; // Fewer hearts on mobile too
+  for(let i = 0; i < heartCount; i++) {
+    setTimeout(createFloatingHeart, i * 300); // Slower spawn rate
+  }
+  setTimeout(()=>{ running=false; }, 8000); // Shorter duration
+});
 
     toggleMusicBtn.addEventListener('click', ()=>{
       if(music.paused){ 
@@ -738,20 +756,23 @@
     // Continuous sparkles - never stop!
     let sparkleInterval;
     function makeSparkles(){
-      for(let i=0;i<12;i++){
-        const s = document.createElement('div');
-        s.className='sparkle';
-        s.style.left=rand(5,95)+'%';
-        s.style.top=rand(10,80)+'%';
-        s.style.width=rand(8,16)+'px';
-        s.style.height=s.style.width;
-        s.style.opacity=rand(0.3,0.9);
-        s.style.animation=`blink ${rand(2,5)}s ease-in-out infinite`;
-        s.style.background = `hsl(${rand(300,360)}, 80%, 80%)`;
-        document.body.appendChild(s);
-        setTimeout(()=>s.remove(),8000);
-      }
-    }
+  const isMobile = window.innerWidth <= 768;
+  const sparkleCount = isMobile ? 6 : 12; // Half the sparkles on mobile
+  
+  for(let i=0;i<sparkleCount;i++){
+    const s = document.createElement('div');
+    s.className='sparkle';
+    s.style.left=rand(5,95)+'%';
+    s.style.top=rand(10,80)+'%';
+    s.style.width=rand(8,16)+'px';
+    s.style.height=s.style.width;
+    s.style.opacity=rand(0.3,0.9);
+    s.style.animation=`blink ${rand(2,5)}s ease-in-out infinite`;
+    s.style.background = `hsl(${rand(300,360)}, 80%, 80%)`;
+    document.body.appendChild(s);
+    setTimeout(()=>s.remove(),6000); // Remove faster on mobile
+  }
+}
 
     // Start continuous sparkles
     function startSparkles() {
@@ -760,8 +781,10 @@
     }
 
     // Initial celebration
-    spawn(50); running=true; loop();
-    setTimeout(()=>{ running=false; }, 3000);
+const isMobile = window.innerWidth <= 768;
+const initialCount = isMobile ? 30 : 50; // Fewer initial confetti on mobile
+spawn(initialCount); running=true; loop();
+setTimeout(()=>{ running=false; }, isMobile ? 2000 : 3000); // Shorter on mobile
 
     // Start sparkles immediately and keep them going
     startSparkles();
