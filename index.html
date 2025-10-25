@@ -508,32 +508,28 @@
 
         <div class="left">
           <div class="love-message">To the most beautiful soul in my world ✨</div>
-          <span class="script">Another year of loving you</span>
+          <span class="script">Wishing you endless smiles and beautiful moments ahead 💐</span>
           <h1 class="big-text">Happy Birthday<br><span id="nffame" style="background: linear-gradient(135deg, var(--rose), var(--gold)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Sameekshya</span> 💖</h1>
-          <p class="sub">Every moment with you feels like a celebration. Here's to another year of adventures, laughter, and endless love. You make my world brighter every single day. 💕</p>
+          <p class="sub">Watching you grow, laugh, and shine has been something truly special. I hope your day is filled with laughter, surprises, and everything that makes your heart happy.</p>
 
           <div class="button-row">
-            <button class="btn wish-btn" id="celebrateBtn">Celebrate Our Love 🎊</button>
-            <button class="btn ghost" id="toggleMusic">Play Our Song 🎵</button>
-            <button class="btn ghost" id="loveNotesBtn">Love Notes 💌</button>
+            <button class="btn wish-btn" id="celebrateBtn">Let’s Celebrate You 🎊</button>
+            <button class="btn ghost" id="toggleMusic">Play Song 🎵</button>
+            <button class="btn ghost" id="loveNotesBtn">A Little Note 💌</button>
           </div>
         </div>
       </div>
 
       <!-- Memory Timeline -->
       <div class="timeline">
-        <h3>Our Beautiful Journey Together 💕</h3>
+        <h3>Some Moments I’ll Always Remember ✨</h3>
         <div class="memory-item">
-          <div class="memory-date">The Day We Met</div>
-          <div class="memory-text">When I first saw your smile, I knew my heart had found its home 💝</div>
-        </div>
-        <div class="memory-item">
-          <div class="memory-date">First Date</div>
-          <div class="memory-text">That perfect evening when time stood still, just you and me ✨</div>
+          <div class="memory-date">The Times We Talked</div>
+          <div class="memory-text">Every conversation, even the small ones, always leaves me smiling ✨</div>
         </div>
         <div class="memory-item">
           <div class="memory-date">Today & Always</div>
-          <div class="memory-text">Every day with you is a gift, every moment a treasure to keep forever 🌟</div>
+          <div class="memory-text">You’re the only one I truly wish to see smiling always and forever 💖</div>
         </div>
       </div>
     <div class="credit-label">Made By: Kushal</div>
@@ -649,7 +645,7 @@
     }
 
     let confs = [];
-    function spawn(n=100){ for(let i=0;i<n;i++) confs.push(new Confetti()) }
+    function spawn(n=2){ for(let i=0;i<n;i++) confs.push(new Confetti()) }
     function clearConfs(){ confs=[]; }
 
     let running=false;
@@ -689,13 +685,7 @@ function loop(currentTime){
 
     // Love notes
     const loveNotes = [
-      "You are my sunshine, my moonlight, and all my stars combined. Happy Birthday, my love! 💫",
-      "Every day with you feels like a beautiful dream I never want to wake up from 💭",
-      "Your smile lights up my world brighter than a thousand candles on your cake 🕯️",
-      "In you, I've found my best friend, my soulmate, and my forever love 💕",
-      "You make ordinary moments feel extraordinary just by being you ✨",
-      "Happy Birthday to the one who makes my heart skip a beat every single day 💓",
-      "With you, every day is Valentine's Day, and today is extra special! 🌹"
+      "There’s something about you maybe it’s your kindness, your laugh, or just you being you that always stays in my mind 🌸"
     ];
 
     let currentNoteIndex = 0;
@@ -719,7 +709,7 @@ function loop(currentTime){
 
     celebrateBtn.addEventListener('click', ()=>{
   const isMobile = window.innerWidth <= 768;
-  const confettiCount = isMobile ? 60 : 150; // Much fewer particles on mobile
+  const confettiCount = isMobile ? 50 : 150; // Much fewer particles on mobile
   
   running = true; 
   clearConfs(); 
@@ -737,13 +727,13 @@ function loop(currentTime){
     toggleMusicBtn.addEventListener('click', ()=>{
       if(music.paused){ 
         music.play().then(()=>{ 
-          toggleMusicBtn.textContent='Pause Our Song 🎵' 
+          toggleMusicBtn.textContent='Pause Song 🎵' 
         }).catch(()=>{ 
-          alert('Music needs permission - click again to play our special song! 🎶')
+          alert('Music needs permission - click again to play special song! 🎶')
         }); 
       } else { 
         music.pause(); 
-        toggleMusicBtn.textContent='Play Our Song 🎵' 
+        toggleMusicBtn.textContent='Play Song 🎵' 
       }
     });
 
@@ -770,7 +760,7 @@ function loop(currentTime){
     s.style.animation=`blink ${rand(2,5)}s ease-in-out infinite`;
     s.style.background = `hsl(${rand(300,360)}, 80%, 80%)`;
     document.body.appendChild(s);
-    setTimeout(()=>s.remove(),6000); // Remove faster on mobile
+    setTimeout(()=>s.remove(),3000); // Remove faster on mobile
   }
 }
 
@@ -873,13 +863,18 @@ function getConfettiBounds() {
     };
   } else {
     // For desktop: use full screen
+    const confettiWidth = Math.min(W, 450);
+    const confettiHeight = Math.min(H, 800);
+    const offsetX = (W - confettiWidth) / 2;
+    const offsetY = (H - confettiHeight) / 2;
+    
     return {
-      minX: 0,
-      maxX: W,
-      minY: -100,
-      maxY: H + 100,
-      width: W,
-      height: H
+      minX: offsetX,
+      maxX: offsetX + confettiWidth,
+      minY: offsetY - 100,
+      maxY: offsetY + confettiHeight + 100,
+      width: confettiWidth,
+      height: confettiHeight
     };
   }
 }
